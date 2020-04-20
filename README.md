@@ -5,7 +5,7 @@ simple modbus tcp client tool
 
 ## install
 
-    go get https://github.com/ka1hung/mbclient
+    go get github.com/ka1hung/mbclient
 
 ## example
 
