@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	mbc := mbclient.NewClient("127.0.0.1", 502, 1)
+	mbc := mbclient.NewClient("127.0.0.1", 502, time.Second)
 	err := mbc.Open()
 	if err != nil {
 		panic(err)
