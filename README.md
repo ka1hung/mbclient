@@ -25,12 +25,12 @@ simple modbus tcp client tool
         }
         defer mbc.Close()
 
-        data, err := mbc.ReadReg(1, 0, 4)
+        data, _ := mbc.ReadReg(1, 0, 4)
         log.Println(data)
 
         mbc.WriteReg(1, 0, 1)
         mbc.WriteRegs(1, 1, []uint16{2, 3, 4})
 
-        data, err = mbc.ReadReg(1, 0, 4)
+        data, _ = mbc.ReadReg(1, 0, 4)
         log.Println(data)
     }
