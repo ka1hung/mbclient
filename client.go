@@ -39,7 +39,7 @@ func (m *MBClient) Open() error {
 	// var err error
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
-		return err
+		return fmt.Errorf(Disconnect)
 	}
 	m.Conn = conn
 
@@ -51,33 +51,18 @@ func (m *MBClient) Close() {
 	if m.Conn != nil {
 		m.Conn.Close()
 	}
-
 }
 
-func checkConn(conn net.Conn) bool {
-	_, err := conn.Write([]byte{})
-	if err != nil {
-		return false
+//IsConnected for check modbus connetection
+func (m *MBClient) IsConnected() bool {
+	if m.Conn != nil {
+		return true
 	}
-	return true
-
-	// bytesRead, err := conn.Read(buffer)
-	// if err != nil {
-	// 	conn.Close()
-	// 	log.Println(err)
-	// 	return false
-	// }
-	// log.Println("Read ", bytesRead, " bytes")
-	// return true
+	return false
 }
 
 //Qurry make a modbus tcp qurry
 func Qurry(conn net.Conn, timeout time.Duration, pdu []byte) ([]byte, error) {
-	// if !checkConn(conn) {
-	// 	log.Println("Disonnected!")
-	// } else {
-	// 	log.Println("Connected!")
-	// }
 	if conn == nil {
 		return []byte{}, fmt.Errorf(Disconnect)
 	}
@@ -108,6 +93,10 @@ func (m *MBClient) ReadCoil(id uint8, addr uint16, leng uint16) ([]bool, error) 
 
 	res, err := Qurry(m.Conn, m.Timeout, pdu)
 	if err != nil {
+		if err.Error() == Disconnect {
+			m.Close()
+			m.Conn = nil
+		}
 		return []bool{}, err
 	}
 	//convert
@@ -134,6 +123,10 @@ func (m *MBClient) ReadCoilIn(id uint8, addr uint16, leng uint16) ([]bool, error
 	//write
 	res, err := Qurry(m.Conn, m.Timeout, pdu)
 	if err != nil {
+		if err.Error() == Disconnect {
+			m.Close()
+			m.Conn = nil
+		}
 		return []bool{}, err
 	}
 
@@ -162,6 +155,10 @@ func (m *MBClient) ReadReg(id uint8, addr uint16, leng uint16) ([]uint16, error)
 	//write
 	res, err := Qurry(m.Conn, m.Timeout, pdu)
 	if err != nil {
+		if err.Error() == Disconnect {
+			m.Close()
+			m.Conn = nil
+		}
 		return []uint16{}, err
 	}
 
@@ -185,6 +182,10 @@ func (m *MBClient) ReadRegIn(id uint8, addr uint16, leng uint16) ([]uint16, erro
 	//write
 	res, err := Qurry(m.Conn, m.Timeout, pdu)
 	if err != nil {
+		if err.Error() == Disconnect {
+			m.Close()
+			m.Conn = nil
+		}
 		return []uint16{}, err
 	}
 
@@ -213,6 +214,10 @@ func (m *MBClient) WriteCoil(id uint8, addr uint16, data bool) error {
 	//write
 	_, err := Qurry(m.Conn, m.Timeout, pdu)
 	if err != nil {
+		if err.Error() == Disconnect {
+			m.Close()
+			m.Conn = nil
+		}
 		return err
 	}
 
@@ -227,6 +232,10 @@ func (m *MBClient) WriteReg(id uint8, addr uint16, data uint16) error {
 	//write
 	_, err := Qurry(m.Conn, m.Timeout, pdu)
 	if err != nil {
+		if err.Error() == Disconnect {
+			m.Close()
+			m.Conn = nil
+		}
 		return err
 	}
 
@@ -256,6 +265,10 @@ func (m *MBClient) WriteCoils(id uint8, addr uint16, data []bool) error {
 	//write
 	_, err := Qurry(m.Conn, m.Timeout, pdu)
 	if err != nil {
+		if err.Error() == Disconnect {
+			m.Close()
+			m.Conn = nil
+		}
 		return err
 	}
 
@@ -275,6 +288,10 @@ func (m *MBClient) WriteRegs(id uint8, addr uint16, data []uint16) error {
 	//write
 	_, err := Qurry(m.Conn, m.Timeout, pdu)
 	if err != nil {
+		if err.Error() == Disconnect {
+			m.Close()
+			m.Conn = nil
+		}
 		return err
 	}
 
