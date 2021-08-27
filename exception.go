@@ -16,25 +16,25 @@ func checkException(data []byte) error {
 
 func exception(code byte) string {
 	switch code {
-	case 0x01:
+	case 1:
 		return fmt.Sprintf("(%02X illegal function)", code)
-	case 0x02:
+	case 2:
 		return fmt.Sprintf("(%02X illegal data address)", code)
-	case 0x03:
+	case 3:
 		return fmt.Sprintf("(%02X illegal data value)", code)
-	case 0x04:
+	case 4:
 		return fmt.Sprintf("(%02X slave device failure)", code)
-	case 0x05:
+	case 5:
 		return fmt.Sprintf("(%02X acknowledge)", code)
-	case 0x06:
+	case 6:
 		return fmt.Sprintf("(%02X slave device busy)", code)
-	case 0x07:
+	case 7:
 		return fmt.Sprintf("(%02X negative acknowledge)", code)
-	case 0x08:
+	case 8:
 		return fmt.Sprintf("(%02X memory parity error)", code)
-	case 0x10:
+	case 10:
 		return fmt.Sprintf("(%02X gateway path unavailable)", code)
-	case 0x11:
+	case 11:
 		return fmt.Sprintf("(%02X gateway target device failed to respond)", code)
 
 	}
