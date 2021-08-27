@@ -13,6 +13,7 @@ simple modbus tcp client tool
 
     import (
         "log"
+        "time"
 
         "github.com/ka1hung/mbclient"
     )
@@ -25,12 +26,19 @@ simple modbus tcp client tool
         }
         defer mbc.Close()
 
-        data, _ := mbc.ReadReg(1, 0, 4)
-        log.Println(data)
+        // read
+        log.Println(mbc.ReadCoil(1, 0, 10))   //func1
+        log.Println(mbc.ReadCoilIn(1, 0, 10)) //func2
+        log.Println(mbc.ReadReg(1, 0, 10))    //func3
+        log.Println(mbc.ReadRegIn(1, 0, 10))  //func4
 
-        mbc.WriteReg(1, 0, 1)
-        mbc.WriteRegs(1, 1, []uint16{2, 3, 4})
+        // write coil
+        mbc.WriteCoil(1, 0, true)                      //func5
+        mbc.WriteCoils(1, 1, []bool{true, true, true}) //func15
+        log.Println(mbc.ReadReg(1, 0, 4))
 
-        data, _ = mbc.ReadReg(1, 0, 4)
-        log.Println(data)
+        // write reg
+        mbc.WriteReg(1, 0, 1)                  //func6
+        mbc.WriteRegs(1, 1, []uint16{2, 3, 4}) //func16
+        log.Println(mbc.ReadReg(1, 0, 4))
     }

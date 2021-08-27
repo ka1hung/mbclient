@@ -55,10 +55,7 @@ func (m *MBClient) Close() {
 
 //IsConnected for check modbus connetection
 func (m *MBClient) IsConnected() bool {
-	if m.Conn != nil {
-		return true
-	}
-	return false
+	return m.Conn != nil
 }
 
 //Qurry make a modbus tcp qurry
@@ -77,14 +74,18 @@ func Qurry(conn net.Conn, timeout time.Duration, pdu []byte) ([]byte, error) {
 	//read
 	rbuf := make([]byte, 1024)
 	conn.SetReadDeadline(time.Now().Add(timeout))
-	len, err := conn.Read(rbuf)
+	leng, err := conn.Read(rbuf)
 	if err != nil {
 		return nil, fmt.Errorf(Disconnect)
 	}
-	if len < 10 {
-		return nil, fmt.Errorf(ModbusError)
+	if err := checkException(rbuf[:leng]); err != nil {
+		return rbuf[:leng], err
 	}
-	return rbuf[6:len], nil
+	if leng < 10 {
+		return rbuf[:leng], fmt.Errorf(ModbusError)
+	}
+
+	return rbuf[6:leng], nil
 }
 
 //ReadCoil mdbus function 1 qurry and return []uint16
@@ -99,6 +100,21 @@ func (m *MBClient) ReadCoil(id uint8, addr uint16, leng uint16) ([]bool, error) 
 		}
 		return []bool{}, err
 	}
+
+	//check
+	if int(res[2]) != (len(res) - 3) {
+		fmt.Println(res)
+		return []bool{}, fmt.Errorf("data length not match")
+	}
+	l := leng / 8
+	if l%8 != 0 {
+		l += 1
+	}
+	if int(res[2]) != int(l) {
+		fmt.Println(res)
+		return []bool{}, fmt.Errorf("data length not match")
+	}
+
 	//convert
 	result := []bool{}
 	bc := res[2]
@@ -111,7 +127,7 @@ func (m *MBClient) ReadCoil(id uint8, addr uint16, leng uint16) ([]bool, error) 
 			}
 		}
 	}
-	result = result[:leng]
+
 	return result, nil
 }
 
@@ -130,6 +146,20 @@ func (m *MBClient) ReadCoilIn(id uint8, addr uint16, leng uint16) ([]bool, error
 		return []bool{}, err
 	}
 
+	//check
+	if int(res[2]) != (len(res) - 3) {
+		fmt.Println(res)
+		return []bool{}, fmt.Errorf("data length not match")
+	}
+	l := leng / 8
+	if l%8 != 0 {
+		l += 1
+	}
+	if int(res[2]) != int(l) {
+		fmt.Println(res)
+		return []bool{}, fmt.Errorf("data length not match")
+	}
+
 	//convert
 	result := []bool{}
 	bc := res[2]
@@ -142,7 +172,6 @@ func (m *MBClient) ReadCoilIn(id uint8, addr uint16, leng uint16) ([]bool, error
 			}
 		}
 	}
-	result = result[:leng]
 
 	return result, nil
 }
@@ -160,6 +189,12 @@ func (m *MBClient) ReadReg(id uint8, addr uint16, leng uint16) ([]uint16, error)
 			m.Conn = nil
 		}
 		return []uint16{}, err
+	}
+
+	//check
+	if (int(leng*2) != (len(res) - 3)) || int(leng*2) != int(res[2]) {
+		fmt.Println(res)
+		return []uint16{}, fmt.Errorf("data length not match")
 	}
 
 	//convert
@@ -189,6 +224,12 @@ func (m *MBClient) ReadRegIn(id uint8, addr uint16, leng uint16) ([]uint16, erro
 		return []uint16{}, err
 	}
 
+	//check
+	if (int(leng*2) != (len(res) - 3)) || int(leng*2) != int(res[2]) {
+		fmt.Println(res)
+		return []uint16{}, fmt.Errorf("data length not match")
+	}
+
 	//convert
 	result := []uint16{}
 	for i := 0; i < int(leng); i++ {
@@ -205,7 +246,7 @@ func (m *MBClient) ReadRegIn(id uint8, addr uint16, leng uint16) ([]uint16, erro
 func (m *MBClient) WriteCoil(id uint8, addr uint16, data bool) error {
 
 	var pdu = []byte{}
-	if data == true {
+	if data {
 		pdu = []byte{id, 0x5, byte(addr >> 8), byte(addr), 0xff, 0x00}
 	} else {
 		pdu = []byte{id, 0x5, byte(addr >> 8), byte(addr), 0x00, 0x00}
@@ -244,7 +285,7 @@ func (m *MBClient) WriteReg(id uint8, addr uint16, data uint16) error {
 
 //WriteCoils mdbus function 15(0x0f) qurry and return []uint16
 func (m *MBClient) WriteCoils(id uint8, addr uint16, data []bool) error {
-	pdu := []byte{}
+	var pdu []byte
 	if len(data)%8 == 0 {
 		pdu = []byte{id, 0x0f, byte(addr >> 8), byte(addr), byte(len(data) >> 8), byte(len(data)), byte(len(data) / 8)}
 	} else {
