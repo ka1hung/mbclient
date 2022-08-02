@@ -107,7 +107,7 @@ func (m *MBClient) ReadCoil(id uint8, addr uint16, leng uint16) ([]bool, error) 
 		return []bool{}, fmt.Errorf("data length not match")
 	}
 	l := leng / 8
-	if l%8 != 0 {
+	if leng%8 != 0 {
 		l += 1
 	}
 	if int(res[2]) != int(l) {
@@ -152,7 +152,7 @@ func (m *MBClient) ReadCoilIn(id uint8, addr uint16, leng uint16) ([]bool, error
 		return []bool{}, fmt.Errorf("data length not match")
 	}
 	l := leng / 8
-	if l%8 != 0 {
+	if leng%8 != 0 {
 		l += 1
 	}
 	if int(res[2]) != int(l) {
