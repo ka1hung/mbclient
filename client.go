@@ -127,7 +127,7 @@ func (m *MBClient) ReadCoil(id uint8, addr uint16, leng uint16) ([]bool, error) 
 			}
 		}
 	}
-
+	result = result[:leng]
 	return result, nil
 }
 
@@ -172,7 +172,7 @@ func (m *MBClient) ReadCoilIn(id uint8, addr uint16, leng uint16) ([]bool, error
 			}
 		}
 	}
-
+	result = result[:leng]
 	return result, nil
 }
 
