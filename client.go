@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 )
 
-//MBClient config
+// MBClient config
 type MBClient struct {
 	IP      string
 	Port    int
@@ -15,12 +16,13 @@ type MBClient struct {
 	Conn    net.Conn
 }
 
-//state show for error
+// state show for error
 const (
 	Init        = "Init"
 	ModbusError = "ModbusError"
 	Ok          = "Ok"
 	Disconnect  = "Disconnect"
+	NoResponse  = "NoResponse"
 )
 
 // NewClient creates a new Modbus Client config.
@@ -33,7 +35,7 @@ func NewClient(IP string, port int, timeout time.Duration) *MBClient {
 	return m
 }
 
-//Open modbus tcp connetion
+// Open modbus tcp connetion
 func (m *MBClient) Open() error {
 	addr := m.IP + ":" + strconv.Itoa(m.Port)
 	// var err error
@@ -46,19 +48,19 @@ func (m *MBClient) Open() error {
 	return nil
 }
 
-//Close modbus tcp connetion
+// Close modbus tcp connetion
 func (m *MBClient) Close() {
 	if m.Conn != nil {
 		m.Conn.Close()
 	}
 }
 
-//IsConnected for check modbus connetection
+// IsConnected for check modbus connetection
 func (m *MBClient) IsConnected() bool {
 	return m.Conn != nil
 }
 
-//Query make a modbus tcp query
+// Query make a modbus tcp query
 func Query(conn net.Conn, timeout time.Duration, pdu []byte) ([]byte, error) {
 	if conn == nil {
 		return []byte{}, fmt.Errorf(Disconnect)
@@ -68,6 +70,7 @@ func Query(conn net.Conn, timeout time.Duration, pdu []byte) ([]byte, error) {
 	//write
 	_, err := conn.Write([]byte(wbuf))
 	if err != nil {
+		fmt.Println(err)
 		return nil, fmt.Errorf(Disconnect)
 	}
 
@@ -76,6 +79,10 @@ func Query(conn net.Conn, timeout time.Duration, pdu []byte) ([]byte, error) {
 	conn.SetReadDeadline(time.Now().Add(timeout))
 	leng, err := conn.Read(rbuf)
 	if err != nil {
+		fmt.Println(err)
+		if strings.Contains(err.Error(), "i/o timeout") {
+			return nil, fmt.Errorf(NoResponse)
+		}
 		return nil, fmt.Errorf(Disconnect)
 	}
 	if err := checkException(rbuf[:leng]); err != nil {
@@ -88,7 +95,7 @@ func Query(conn net.Conn, timeout time.Duration, pdu []byte) ([]byte, error) {
 	return rbuf[6:leng], nil
 }
 
-//ReadCoil mdbus function 1 query and return []uint16
+// ReadCoil mdbus function 1 query and return []uint16
 func (m *MBClient) ReadCoil(id uint8, addr uint16, leng uint16) ([]bool, error) {
 	pdu := []byte{id, 0x01, byte(addr >> 8), byte(addr), byte(leng >> 8), byte(leng)}
 
@@ -131,7 +138,7 @@ func (m *MBClient) ReadCoil(id uint8, addr uint16, leng uint16) ([]bool, error) 
 	return result, nil
 }
 
-//ReadCoilIn mdbus function 2 query and return []uint16
+// ReadCoilIn mdbus function 2 query and return []uint16
 func (m *MBClient) ReadCoilIn(id uint8, addr uint16, leng uint16) ([]bool, error) {
 
 	pdu := []byte{id, 0x02, byte(addr >> 8), byte(addr), byte(leng >> 8), byte(leng)}
@@ -176,7 +183,7 @@ func (m *MBClient) ReadCoilIn(id uint8, addr uint16, leng uint16) ([]bool, error
 	return result, nil
 }
 
-//ReadReg mdbus function 3 query and return []uint16
+// ReadReg mdbus function 3 query and return []uint16
 func (m *MBClient) ReadReg(id uint8, addr uint16, leng uint16) ([]uint16, error) {
 
 	pdu := []byte{id, 0x03, byte(addr >> 8), byte(addr), byte(leng >> 8), byte(leng)}
@@ -209,7 +216,7 @@ func (m *MBClient) ReadReg(id uint8, addr uint16, leng uint16) ([]uint16, error)
 	return result, nil
 }
 
-//ReadRegIn mdbus function 4 query and return []uint16
+// ReadRegIn mdbus function 4 query and return []uint16
 func (m *MBClient) ReadRegIn(id uint8, addr uint16, leng uint16) ([]uint16, error) {
 
 	pdu := []byte{id, 0x04, byte(addr >> 8), byte(addr), byte(leng >> 8), byte(leng)}
@@ -242,7 +249,7 @@ func (m *MBClient) ReadRegIn(id uint8, addr uint16, leng uint16) ([]uint16, erro
 	return result, nil
 }
 
-//WriteCoil mdbus function 5 query and return []uint16
+// WriteCoil mdbus function 5 query and return []uint16
 func (m *MBClient) WriteCoil(id uint8, addr uint16, data bool) error {
 
 	var pdu = []byte{}
@@ -265,7 +272,7 @@ func (m *MBClient) WriteCoil(id uint8, addr uint16, data bool) error {
 	return nil
 }
 
-//WriteReg mdbus function 6 query and return []uint16
+// WriteReg mdbus function 6 query and return []uint16
 func (m *MBClient) WriteReg(id uint8, addr uint16, data uint16) error {
 
 	pdu := []byte{id, 0x06, byte(addr >> 8), byte(addr), byte(data >> 8), byte(data)}
@@ -283,7 +290,7 @@ func (m *MBClient) WriteReg(id uint8, addr uint16, data uint16) error {
 	return nil
 }
 
-//WriteCoils mdbus function 15(0x0f) query and return []uint16
+// WriteCoils mdbus function 15(0x0f) query and return []uint16
 func (m *MBClient) WriteCoils(id uint8, addr uint16, data []bool) error {
 	var pdu []byte
 	if len(data)%8 == 0 {
@@ -316,7 +323,7 @@ func (m *MBClient) WriteCoils(id uint8, addr uint16, data []bool) error {
 	return nil
 }
 
-//WriteRegs mdbus function 16(0x10) query and return []uint16
+// WriteRegs mdbus function 16(0x10) query and return []uint16
 func (m *MBClient) WriteRegs(id uint8, addr uint16, data []uint16) error {
 
 	pdu := []byte{id, 0x10, byte(addr >> 8), byte(addr), byte(len(data) >> 8), byte(len(data)), byte(len(data)) * 2}
