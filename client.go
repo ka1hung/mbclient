@@ -39,7 +39,7 @@ func NewClient(IP string, port int, timeout time.Duration) *MBClient {
 func (m *MBClient) Open() error {
 	addr := m.IP + ":" + strconv.Itoa(m.Port)
 	// var err error
-	conn, err := net.Dial("tcp", addr)
+	conn, err := net.DialTimeout("tcp", addr, m.Timeout)
 	if err != nil {
 		return fmt.Errorf(Disconnect)
 	}
