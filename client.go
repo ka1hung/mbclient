@@ -89,7 +89,7 @@ func Query(conn net.Conn, timeout time.Duration, pdu []byte, byteLen int) ([]byt
 			if strings.Contains(err.Error(), "i/o timeout") {
 				return nil, ErrNoResponse
 			}
-			return nil, Disconnect
+			return nil, ErrDisconnect
 		}
 
 		if i == 0 {
