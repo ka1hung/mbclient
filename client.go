@@ -19,7 +19,7 @@ type MBClient struct {
 
 // Sentinel errors for Modbus operations.
 var (
-	Disconnect     = errors.New("Disconnect")
+	ErrDisconnect  = errors.New("Disconnect")
 	ErrNoResponse  = errors.New("NoResponse")
 	ErrModbusError = errors.New("ModbusError")
 )
