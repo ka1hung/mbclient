@@ -19,7 +19,7 @@ type MBClient struct {
 
 // Sentinel errors for Modbus operations.
 var (
-	ErrDisconnect  = errors.New("Disconnect")
+	Disconnect     = errors.New("Disconnect")
 	ErrNoResponse  = errors.New("NoResponse")
 	ErrModbusError = errors.New("ModbusError")
 )
@@ -39,7 +39,7 @@ func (m *MBClient) Open() error {
 	addr := m.IP + ":" + strconv.Itoa(m.Port)
 	conn, err := net.DialTimeout("tcp", addr, m.Timeout)
 	if err != nil {
-		return ErrDisconnect
+		return Disconnect
 	}
 	m.Conn = conn
 
@@ -60,7 +60,7 @@ func (m *MBClient) IsConnected() bool {
 
 // handleDisconnect handles disconnect error and cleans up connection
 func (m *MBClient) handleDisconnect(err error) {
-	if errors.Is(err, ErrDisconnect) {
+	if errors.Is(err, Disconnect) {
 		m.Close()
 		m.Conn = nil
 	}
@@ -69,14 +69,14 @@ func (m *MBClient) handleDisconnect(err error) {
 // Query sends a Modbus TCP request and returns the response.
 func Query(conn net.Conn, timeout time.Duration, pdu []byte, byteLen int) ([]byte, error) {
 	if conn == nil {
-		return []byte{}, ErrDisconnect
+		return []byte{}, Disconnect
 	}
 	header := []byte{0, 0, 0, 0, byte(len(pdu) >> 8), byte(len(pdu))}
 	wbuf := append(header, pdu...)
 	// write
 	_, err := conn.Write(wbuf)
 	if err != nil {
-		return nil, ErrDisconnect
+		return nil, Disconnect
 	}
 
 	// read
@@ -89,7 +89,7 @@ func Query(conn net.Conn, timeout time.Duration, pdu []byte, byteLen int) ([]byt
 			if strings.Contains(err.Error(), "i/o timeout") {
 				return nil, ErrNoResponse
 			}
-			return nil, ErrDisconnect
+			return nil, Disconnect
 		}
 
 		if i == 0 {
