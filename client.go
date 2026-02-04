@@ -1,6 +1,7 @@
 package mbclient
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -8,7 +9,7 @@ import (
 	"time"
 )
 
-// MBClient config
+// MBClient is a Modbus TCP client configuration and connection holder.
 type MBClient struct {
 	IP      string
 	Port    int
@@ -16,13 +17,11 @@ type MBClient struct {
 	Conn    net.Conn
 }
 
-// state show for error
-const (
-	Init        = "Init"
-	ModbusError = "ModbusError"
-	Ok          = "Ok"
-	Disconnect  = "Disconnect"
-	NoResponse  = "NoResponse"
+// Sentinel errors for Modbus operations.
+var (
+	ErrDisconnect  = errors.New("Disconnect")
+	ErrNoResponse  = errors.New("NoResponse")
+	ErrModbusError = errors.New("ModbusError")
 )
 
 // NewClient creates a new Modbus Client config.
@@ -35,311 +34,230 @@ func NewClient(IP string, port int, timeout time.Duration) *MBClient {
 	return m
 }
 
-// Open modbus tcp connetion
+// Open establishes a Modbus TCP connection.
 func (m *MBClient) Open() error {
 	addr := m.IP + ":" + strconv.Itoa(m.Port)
-	// var err error
 	conn, err := net.DialTimeout("tcp", addr, m.Timeout)
 	if err != nil {
-		return fmt.Errorf(Disconnect)
+		return ErrDisconnect
 	}
 	m.Conn = conn
 
 	return nil
 }
 
-// Close modbus tcp connetion
+// Close closes the Modbus TCP connection.
 func (m *MBClient) Close() {
 	if m.Conn != nil {
 		m.Conn.Close()
 	}
 }
 
-// IsConnected for check modbus connetection
+// IsConnected returns true if the connection object exists.
 func (m *MBClient) IsConnected() bool {
 	return m.Conn != nil
 }
 
-// Query make a modbus tcp query
-func Query(conn net.Conn, timeout time.Duration, pdu []byte) ([]byte, error) {
+// handleDisconnect handles disconnect error and cleans up connection
+func (m *MBClient) handleDisconnect(err error) {
+	if errors.Is(err, ErrDisconnect) {
+		m.Close()
+		m.Conn = nil
+	}
+}
+
+// Query sends a Modbus TCP request and returns the response.
+func Query(conn net.Conn, timeout time.Duration, pdu []byte, byteLen int) ([]byte, error) {
 	if conn == nil {
-		return []byte{}, fmt.Errorf(Disconnect)
+		return []byte{}, ErrDisconnect
 	}
 	header := []byte{0, 0, 0, 0, byte(len(pdu) >> 8), byte(len(pdu))}
 	wbuf := append(header, pdu...)
-	//write
-	_, err := conn.Write([]byte(wbuf))
+	// write
+	_, err := conn.Write(wbuf)
 	if err != nil {
-		fmt.Println(err)
-		return nil, fmt.Errorf(Disconnect)
+		return nil, ErrDisconnect
 	}
 
-	//read
-	rbuf := make([]byte, 1024)
-	conn.SetReadDeadline(time.Now().Add(timeout))
-	leng, err := conn.Read(rbuf)
-	if err != nil {
-		fmt.Println(err)
-		if strings.Contains(err.Error(), "i/o timeout") {
-			return nil, fmt.Errorf(NoResponse)
+	// read
+	rbs := []byte{}
+	for i := range 10 {
+		rbuf := make([]byte, 1024)
+		conn.SetReadDeadline(time.Now().Add(timeout))
+		leng, err := conn.Read(rbuf)
+		if err != nil {
+			if strings.Contains(err.Error(), "i/o timeout") {
+				return nil, ErrNoResponse
+			}
+			return nil, ErrDisconnect
 		}
-		return nil, fmt.Errorf(Disconnect)
-	}
-	if err := checkException(rbuf[:leng]); err != nil {
-		return rbuf[:leng], err
-	}
-	if leng < 10 {
-		return rbuf[:leng], fmt.Errorf(ModbusError)
+
+		if i == 0 {
+			if err := checkException(rbuf[:leng]); err != nil {
+				return rbuf[:leng], err
+			}
+		}
+		rbs = append(rbs, rbuf[:leng]...)
+
+		if len(rbs) >= byteLen {
+			break
+		}
+
 	}
 
-	return rbuf[6:leng], nil
+	if len(rbs) < 10 {
+		return rbs, ErrModbusError
+	}
+
+	return rbs[6:], nil
 }
 
-// ReadCoil mdbus function 1 query and return []uint16
+// readCoilInternal is shared logic for Modbus function 1 (Read Coils) and 2 (Read Discrete Inputs).
+func (m *MBClient) readCoilInternal(id uint8, addr uint16, leng uint16, funcCode byte) ([]bool, error) {
+	pdu := []byte{id, funcCode, byte(addr >> 8), byte(addr), byte(leng >> 8), byte(leng)}
+
+	byteLen := 9 + (int(leng)+7)/8
+	res, err := Query(m.Conn, m.Timeout, pdu, byteLen)
+	if err != nil {
+		m.handleDisconnect(err)
+		return []bool{}, err
+	}
+
+	// check
+	expectedBytes := (leng + 7) / 8
+	if int(res[2]) != (len(res)-3) || int(res[2]) != int(expectedBytes) {
+		return []bool{}, fmt.Errorf("data length not match")
+	}
+
+	// convert
+	result := []bool{}
+	bc := res[2]
+	for i := 0; i < int(bc); i++ {
+		for j := 0; j < 8; j++ {
+			result = append(result, (res[3+i]&(byte(1)<<byte(j))) != 0)
+		}
+	}
+	return result[:leng], nil
+}
+
+// ReadCoil executes Modbus function 1 (Read Coils) and returns coil states.
 func (m *MBClient) ReadCoil(id uint8, addr uint16, leng uint16) ([]bool, error) {
-	pdu := []byte{id, 0x01, byte(addr >> 8), byte(addr), byte(leng >> 8), byte(leng)}
-
-	res, err := Query(m.Conn, m.Timeout, pdu)
-	if err != nil {
-		if err.Error() == Disconnect {
-			m.Close()
-			m.Conn = nil
-		}
-		return []bool{}, err
-	}
-
-	//check
-	if int(res[2]) != (len(res) - 3) {
-		fmt.Println(res)
-		return []bool{}, fmt.Errorf("data length not match")
-	}
-	l := leng / 8
-	if leng%8 != 0 {
-		l += 1
-	}
-	if int(res[2]) != int(l) {
-		fmt.Println(res)
-		return []bool{}, fmt.Errorf("data length not match")
-	}
-
-	//convert
-	result := []bool{}
-	bc := res[2]
-	for i := 0; i < int(bc); i++ {
-		for j := 0; j < 8; j++ {
-			if (res[3+i] & (byte(1) << byte(j))) != 0 {
-				result = append(result, true)
-			} else {
-				result = append(result, false)
-			}
-		}
-	}
-	result = result[:leng]
-	return result, nil
+	return m.readCoilInternal(id, addr, leng, 0x01)
 }
 
-// ReadCoilIn mdbus function 2 query and return []uint16
+// ReadCoilIn executes Modbus function 2 (Read Discrete Inputs) and returns input states.
 func (m *MBClient) ReadCoilIn(id uint8, addr uint16, leng uint16) ([]bool, error) {
+	return m.readCoilInternal(id, addr, leng, 0x02)
+}
 
-	pdu := []byte{id, 0x02, byte(addr >> 8), byte(addr), byte(leng >> 8), byte(leng)}
+// readRegInternal is shared logic for Modbus function 3 (Read Holding Registers) and 4 (Read Input Registers).
+func (m *MBClient) readRegInternal(id uint8, addr uint16, leng uint16, funcCode byte) ([]uint16, error) {
+	pdu := []byte{id, funcCode, byte(addr >> 8), byte(addr), byte(leng >> 8), byte(leng)}
 
-	//write
-	res, err := Query(m.Conn, m.Timeout, pdu)
+	byteLen := 9 + int(leng*2)
+	res, err := Query(m.Conn, m.Timeout, pdu, byteLen)
 	if err != nil {
-		if err.Error() == Disconnect {
-			m.Close()
-			m.Conn = nil
-		}
-		return []bool{}, err
+		m.handleDisconnect(err)
+		return []uint16{}, err
 	}
 
-	//check
-	if int(res[2]) != (len(res) - 3) {
-		fmt.Println(res)
-		return []bool{}, fmt.Errorf("data length not match")
-	}
-	l := leng / 8
-	if leng%8 != 0 {
-		l += 1
-	}
-	if int(res[2]) != int(l) {
-		fmt.Println(res)
-		return []bool{}, fmt.Errorf("data length not match")
+	// check
+	if (int(leng*2) != (len(res) - 3)) || int(leng*2) != int(res[2]) {
+		return []uint16{}, fmt.Errorf("data length not match")
 	}
 
-	//convert
-	result := []bool{}
-	bc := res[2]
-	for i := 0; i < int(bc); i++ {
-		for j := 0; j < 8; j++ {
-			if (res[3+i] & (byte(1) << byte(j))) != 0 {
-				result = append(result, true)
-			} else {
-				result = append(result, false)
-			}
-		}
+	// convert
+	result := make([]uint16, leng)
+	for i := 0; i < int(leng); i++ {
+		result[i] = uint16(res[i*2+3])<<8 | uint16(res[i*2+4])
 	}
-	result = result[:leng]
 	return result, nil
 }
 
-// ReadReg mdbus function 3 query and return []uint16
+// ReadReg executes Modbus function 3 (Read Holding Registers) and returns register values.
 func (m *MBClient) ReadReg(id uint8, addr uint16, leng uint16) ([]uint16, error) {
-
-	pdu := []byte{id, 0x03, byte(addr >> 8), byte(addr), byte(leng >> 8), byte(leng)}
-
-	//write
-	res, err := Query(m.Conn, m.Timeout, pdu)
-	if err != nil {
-		if err.Error() == Disconnect {
-			m.Close()
-			m.Conn = nil
-		}
-		return []uint16{}, err
-	}
-
-	//check
-	if (int(leng*2) != (len(res) - 3)) || int(leng*2) != int(res[2]) {
-		fmt.Println(res)
-		return []uint16{}, fmt.Errorf("data length not match")
-	}
-
-	//convert
-	result := []uint16{}
-	for i := 0; i < int(leng); i++ {
-		var b uint16
-		b = uint16(res[i*2+3]) << 8
-		b |= uint16(res[i*2+4])
-		result = append(result, b)
-	}
-
-	return result, nil
+	return m.readRegInternal(id, addr, leng, 0x03)
 }
 
-// ReadRegIn mdbus function 4 query and return []uint16
+// ReadRegIn executes Modbus function 4 (Read Input Registers) and returns register values.
 func (m *MBClient) ReadRegIn(id uint8, addr uint16, leng uint16) ([]uint16, error) {
-
-	pdu := []byte{id, 0x04, byte(addr >> 8), byte(addr), byte(leng >> 8), byte(leng)}
-
-	//write
-	res, err := Query(m.Conn, m.Timeout, pdu)
-	if err != nil {
-		if err.Error() == Disconnect {
-			m.Close()
-			m.Conn = nil
-		}
-		return []uint16{}, err
-	}
-
-	//check
-	if (int(leng*2) != (len(res) - 3)) || int(leng*2) != int(res[2]) {
-		fmt.Println(res)
-		return []uint16{}, fmt.Errorf("data length not match")
-	}
-
-	//convert
-	result := []uint16{}
-	for i := 0; i < int(leng); i++ {
-		var b uint16
-		b = uint16(res[i*2+3]) << 8
-		b |= uint16(res[i*2+4])
-		result = append(result, b)
-	}
-
-	return result, nil
+	return m.readRegInternal(id, addr, leng, 0x04)
 }
 
-// WriteCoil mdbus function 5 query and return []uint16
+// WriteCoil executes Modbus function 5 (Write Single Coil).
 func (m *MBClient) WriteCoil(id uint8, addr uint16, data bool) error {
-
-	var pdu = []byte{}
+	pdu := []byte{id, 0x5, byte(addr >> 8), byte(addr), 0x00, 0x00}
 	if data {
-		pdu = []byte{id, 0x5, byte(addr >> 8), byte(addr), 0xff, 0x00}
-	} else {
-		pdu = []byte{id, 0x5, byte(addr >> 8), byte(addr), 0x00, 0x00}
+		pdu[4] = 0xff
 	}
 
-	//write
-	_, err := Query(m.Conn, m.Timeout, pdu)
+	// write
+
+	byteLen := 10
+	_, err := Query(m.Conn, m.Timeout, pdu, byteLen)
 	if err != nil {
-		if err.Error() == Disconnect {
-			m.Close()
-			m.Conn = nil
-		}
+		m.handleDisconnect(err)
 		return err
 	}
 
 	return nil
 }
 
-// WriteReg mdbus function 6 query and return []uint16
+// WriteReg executes Modbus function 6 (Write Single Register).
 func (m *MBClient) WriteReg(id uint8, addr uint16, data uint16) error {
 
 	pdu := []byte{id, 0x06, byte(addr >> 8), byte(addr), byte(data >> 8), byte(data)}
 
-	//write
-	_, err := Query(m.Conn, m.Timeout, pdu)
+	// write
+	byteLen := 10
+	_, err := Query(m.Conn, m.Timeout, pdu, byteLen)
 	if err != nil {
-		if err.Error() == Disconnect {
-			m.Close()
-			m.Conn = nil
-		}
+		m.handleDisconnect(err)
 		return err
 	}
 
 	return nil
 }
 
-// WriteCoils mdbus function 15(0x0f) query and return []uint16
+// WriteCoils executes Modbus function 15 (Write Multiple Coils).
 func (m *MBClient) WriteCoils(id uint8, addr uint16, data []bool) error {
-	var pdu []byte
-	if len(data)%8 == 0 {
-		pdu = []byte{id, 0x0f, byte(addr >> 8), byte(addr), byte(len(data) >> 8), byte(len(data)), byte(len(data) / 8)}
-	} else {
-		pdu = []byte{id, 0x0f, byte(addr >> 8), byte(addr), byte(len(data) >> 8), byte(len(data)), byte(len(data)/8) + 1}
-	}
-	var tbuf byte
-	for i := 0; i < len(data); i++ {
-		if data[i] {
-			tbuf |= byte(1 << uint(i%8))
-		}
-
-		if (i+1)%8 == 0 || i == len(data)-1 {
-			pdu = append(pdu, tbuf)
-			tbuf = 0
+	byteCount := (len(data) + 7) / 8
+	pdu := []byte{id, 0x0f, byte(addr >> 8), byte(addr), byte(len(data) >> 8), byte(len(data)), byte(byteCount)}
+	coilBytes := make([]byte, byteCount)
+	for i, v := range data {
+		if v {
+			coilBytes[i/8] |= 1 << uint(i%8)
 		}
 	}
+	pdu = append(pdu, coilBytes...)
 
-	//write
-	_, err := Query(m.Conn, m.Timeout, pdu)
+	// write
+	byteLen := 12
+	_, err := Query(m.Conn, m.Timeout, pdu, byteLen)
 	if err != nil {
-		if err.Error() == Disconnect {
-			m.Close()
-			m.Conn = nil
-		}
+		m.handleDisconnect(err)
 		return err
 	}
 
 	return nil
 }
 
-// WriteRegs mdbus function 16(0x10) query and return []uint16
+// WriteRegs executes Modbus function 16 (Write Multiple Registers).
 func (m *MBClient) WriteRegs(id uint8, addr uint16, data []uint16) error {
-
-	pdu := []byte{id, 0x10, byte(addr >> 8), byte(addr), byte(len(data) >> 8), byte(len(data)), byte(len(data)) * 2}
-
-	for i := 0; i < len(data); i++ {
-		pdu = append(pdu, byte(data[i]>>8))
-		pdu = append(pdu, byte(data[i]))
+	byteCount := len(data) * 2
+	pdu := []byte{id, 0x10, byte(addr >> 8), byte(addr), byte(len(data) >> 8), byte(len(data)), byte(byteCount)}
+	regBytes := make([]byte, byteCount)
+	for i, v := range data {
+		regBytes[i*2] = byte(v >> 8)
+		regBytes[i*2+1] = byte(v)
 	}
+	pdu = append(pdu, regBytes...)
 
-	//write
-	_, err := Query(m.Conn, m.Timeout, pdu)
+	// write
+	byteLen := 12
+	_, err := Query(m.Conn, m.Timeout, pdu, byteLen)
 	if err != nil {
-		if err.Error() == Disconnect {
-			m.Close()
-			m.Conn = nil
-		}
+		m.handleDisconnect(err)
 		return err
 	}
 

@@ -2,18 +2,20 @@ package mbclient
 
 import "fmt"
 
-// ref:https://www.simplymodbus.ca/exceptions.htm
+// checkException checks the Modbus response for exception codes.
+// Reference: https://www.simplymodbus.ca/exceptions.htm
 func checkException(data []byte) error {
 	if len(data) < 9 {
-		return fmt.Errorf(ModbusError + "data length too short")
+		return fmt.Errorf("%w: data length too short", ErrModbusError)
 	}
-	//ModbusError
+	// check exception bit
 	if (data[7] & 0x80) != 0 {
-		return fmt.Errorf(ModbusError + exception(data[8]))
+		return fmt.Errorf("%w: %s", ErrModbusError, exception(data[8]))
 	}
 	return nil
 }
 
+// exception returns a human-readable description for a Modbus exception code.
 func exception(code byte) string {
 	switch code {
 	case 1:
