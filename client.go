@@ -81,7 +81,7 @@ func Query(conn net.Conn, timeout time.Duration, pdu []byte, byteLen int) ([]byt
 
 	// read
 	rbs := []byte{}
-	for i := range 10 {
+	for i := 0; i < 10; i++ {
 		rbuf := make([]byte, 1024)
 		conn.SetReadDeadline(time.Now().Add(timeout))
 		leng, err := conn.Read(rbuf)
