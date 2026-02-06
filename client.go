@@ -193,7 +193,7 @@ func (m *MBClient) WriteCoil(id uint8, addr uint16, data bool) error {
 
 	// write
 
-	byteLen := 10
+	byteLen := 12
 	_, err := Query(m.Conn, m.Timeout, pdu, byteLen)
 	if err != nil {
 		m.handleDisconnect(err)
@@ -209,7 +209,7 @@ func (m *MBClient) WriteReg(id uint8, addr uint16, data uint16) error {
 	pdu := []byte{id, 0x06, byte(addr >> 8), byte(addr), byte(data >> 8), byte(data)}
 
 	// write
-	byteLen := 10
+	byteLen := 12
 	_, err := Query(m.Conn, m.Timeout, pdu, byteLen)
 	if err != nil {
 		m.handleDisconnect(err)
